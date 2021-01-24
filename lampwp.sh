@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Deploying LAMP Environment on CentOS7 System
+# Description: Building LAMP environment and deploying WordPress website in stand-alone CentOS7 System
 # Author: Praywu 
 # Blog: https://cnblogs.com/hgzero
 
@@ -20,8 +20,12 @@ website_path='/data/httpd/'
 
 
 function phpSource(){
-	rpm -Uvh https://mirror.webtatic.com/yum/el7/epel-release.rpm
-	rpm -Uvh https://mirror.webtatic.com/yum/el7/webtatic-release.rpm		
+	if $(rpm -qa | grep -q 'webtatic-release' && rpm -qa | grep -q 'epel-release' );then
+		echo -e "\033[32m[INFO]\033[0m $2 webtatic source already Installed!" 
+	else
+		rpm -Uvh https://mirror.webtatic.com/yum/el7/epel-release.rpm
+		rpm -Uvh https://mirror.webtatic.com/yum/el7/webtatic-release.rpm		
+	fi
 }
 
 function initMysql() {
@@ -83,7 +87,7 @@ function confApache(){
 function wpGet(){
 	wget -c https://raw.sevencdn.com/hgzerowzh/files/main/wordpress-5.4.4-zh_CN.tar.gz -P $1
 	tar xf $1/wordpress-5.4.4-zh_CN.tar.gz -C $1 && rm -rf $1/wordpress-5.4.4-zh_CN.tar.gz  
-	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m WordPress Decompression Complete." || echo -e "\033[31m[ERROR]\033[0m WordPress Decompression Failed!"
+	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m WordPress decompression Complete." || echo -e "\033[31m[ERROR]\033[0m WordPress decompression Failed!"
 	cp $1/wordpress/wp-config-sample.php $1/wordpress/wp-config.php
 	sed -ri "s@'DB_NAME', '(.*)'@'DB_NAME', '$database'@g" $1/wordpress/wp-config.php
 	sed -ri "s@'DB_USER', '(.*)'@'DB_USER', '$db_user'@g" $1/wordpress/wp-config.php
@@ -97,15 +101,44 @@ function wpGet(){
 
 function phpInstall(){
 	yum install -y php72w php72w-cli php72w-common php72w-gd php72w-ldap php72w-mbstring php72w-mysql php72w-pdo php72w-fpm 
-	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m PHP7 Install Success!" || echo -e "\033[32m[ERROR]\033[0m PHP7 Install Failed!"
+	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m PHP7 install Success!" || echo -e "\033[32m[ERROR]\033[0m PHP7 install Failed!"
 }
 
-function main(){
-	appInstall 'mariadb*' 'mariadb' && initMysql 
+function init(){
+	appInstall 'mariadb*' 'mariadb' && initMysql   
 	phpSource 
 	phpInstall && appInstall 'httpd' 'httpd' 
 	[[ $? -eq 0 ]] && wpGet '/data/httpd' && confApache '/etc/httpd/conf/httpd.conf' 'mysite.conf' 
-	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m LAMP Environment Deploy Success!" && echo -e "\033[32m[Access it to Continue]\033[0m http://YourIPAddress"
+	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m LAMP environment deploy Success!" && echo -e "\033[32m[INFO]\033[0mContiune to http://IP"
 }
 
-main
+function clear(){
+	systemctl stop mariadb.service
+	systemctl stop httpd.service
+	rm -rf /var/lib/mysql/*
+	sed -i "/skip-name-resolve/d" /etc/my.cnf
+	sed -i "/innodb-file-per-table/d" /etc/my.cnf
+	rm -rf "/data/httpd/" "/var/log/httpd/${fqdn}" "/etc/httpd/conf.d/mysite.conf"
+	sed -ri "s@^#(Listen 80)@\1@g" /etc/httpd/conf/httpd.conf
+	sed -ri "s@^#(ServerName.*)@\1@g" /etc/httpd/conf/httpd.conf
+	sed -ri "s@^#(DocumentRoot.*)@\1@g" /etc/httpd/conf/httpd.conf
+	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m clear environment Success!" || echo -e "\033[31m[ERROR]\033[0m something unknow happend!"
+}
+
+function help(){
+	echo "Usage: $0 [ init | clear ]"
+	echo -e "Deploying LAMP Environment on CentOS7 System. \n"
+}
+
+function main(){
+	case $1 in 
+	init)		
+		init || clear ;;
+	clear)
+		clear ;;	
+	*)
+		help ;;
+	esac
+}
+
+main $1 
