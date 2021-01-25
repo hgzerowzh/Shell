@@ -1,7 +1,11 @@
 #!/bin/bash
-# Description: Building LAMP environment and deploying WordPress website in stand-alone CentOS7 System
+# Description: Building LAMP environment and deploying WordPress in CentOS7
 # Author: Praywu 
 # Blog: https://cnblogs.com/hgzero
+
+# WordPress Version
+wp_version='5.6'
+#wp_version='5.4.4'
 
 # MySQL Root Password
 user='root'
@@ -16,7 +20,7 @@ allow_addr='127.0.0.1'
 
 # Apache Config 
 fqdn='www.hgzerowzh.com'
-website_path='/data/httpd/'
+website_path='/data/apache'
 
 
 function phpSource(){
@@ -52,7 +56,7 @@ EOF
 		mysql -u${user} -p${password} -e "create database ${database} character set utf8 collate utf8_bin;"
 		mysql -u${user} -p${password} -e "grant all on ${database}.* to "${db_user}"@"${allow_addr}" identified by '${db_passwd}';"
 		mysql -u${user} -p${password} -e "flush privileges;"
-		sed -i "2i skip-name-resolve=ON\ninnodb-file-per-table=ON" /etc/my.cnf
+		sed -i "/mysqld/a innodb-file-per-table=ON\nskip-name-resolve=ON" /etc/my.cnf
 	} &> /dev/null
 	systemctl restart mariadb.service 
 	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m Mariadb initialize Success!" || echo -e "\033[31m[ERROR]\033[0m Mariadb initialize Failed!"
@@ -65,52 +69,56 @@ function appInstall(){
 }
 
 function confApache(){
-	sed -i "s@#ServerName.*@ServerName $fqdn@g" $1 
+	sed -ri "s@(^#[#]*ServerName.*)|(^ServerName.*)@ServerName ${fqdn}@g" $1 
 	sed -i "s@^Listen.*@#&@g" $1 
 	sed -i "s@^DocumentRoot.*@#&@g" $1 
-	mkdir -p /var/log/httpd/$fqdn
+	mkdir -p ${website_path}/$fqdn /var/log/httpd/$fqdn
 	echo "Listen 80
 			<VirtualHost *:80>	
 				Servername $fqdn 
-				DocumentRoot /data/httpd/$fqdn 
-				<Directory '/data/httpd/$fqdn'>
+				DocumentRoot ${website_path}/$fqdn 
+				<Directory '${website_path}/$fqdn'>
 					Options FollowSymLinks
 					AllowOverRide None
 					Require all granted
 				</Directory>		
 				CustomLog '|/usr/sbin/rotatelogs /var/log/httpd/${fqdn}/access_log 10M' combined
 			</VirtualHost>" > /etc/httpd/conf.d/$2 
-	$(httpd -t) && echo -e "\033[32m[INFO]\033[0m Apache config OK!" || echo -e "\033[31m[INFO]\033[0m Apache config Failed!"
-	systemctl restart httpd.service
+	$(httpd -t) && systemctl restart httpd.service
+	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m Apache config OK!" || echo -e "\033[31m[INFO]\033[0m Apache config Failed!"
 }
 
 function wpGet(){
-	wget -c https://raw.sevencdn.com/hgzerowzh/files/main/wordpress-5.4.4-zh_CN.tar.gz -P $1 &> /dev/null
-	tar xf $1/wordpress-5.4.4-zh_CN.tar.gz -C $1 && rm -rf $1/wordpress-5.4.4-zh_CN.tar.gz  
+	wget -c https://raw.sevencdn.com/hgzerowzh/Storage/master/wordpress/wordpress-${wp_version}-zh_CN.tar.gz -P ${website_path} &> /dev/null
+	tar xf ${website_path}/wordpress-${wp_version}-zh_CN.tar.gz -C ${website_path} && rm -rf ${website_path}/wordpress-${wp_version}-zh_CN.tar.gz  
 	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m WordPress decompression Complete." || echo -e "\033[31m[ERROR]\033[0m WordPress decompression Failed!"
-	cp $1/wordpress/wp-config-sample.php $1/wordpress/wp-config.php
-	sed -ri "s@'DB_NAME', '(.*)'@'DB_NAME', '$database'@g" $1/wordpress/wp-config.php
-	sed -ri "s@'DB_USER', '(.*)'@'DB_USER', '$db_user'@g" $1/wordpress/wp-config.php
-	sed -ri "s@'DB_PASSWORD', '(.*)'@'DB_PASSWORD', '$db_passwd'@g" $1/wordpress/wp-config.php
-	sed -ri "s@'DB_HOST', '(.*)'@'DB_HOST', '$db_host'@g" $1/wordpress/wp-config.php
-	sed -ri "s@'DB_CHARSET', '(.*)'@'DB_CHARSET', 'utf8'@g" $1/wordpress/wp-config.php
-	sed -ri "s@'DB_COLLATE', '(.*)'@'DB_COLLATE', 'utf8_bin'@g" $1/wordpress/wp-config.php
+	cp ${website_path}/wordpress/wp-config-sample.php ${website_path}/wordpress/wp-config.php
+	sed -ri "s@'DB_NAME', '(.*)'@'DB_NAME', '$database'@g" ${website_path}/wordpress/wp-config.php
+	sed -ri "s@'DB_USER', '(.*)'@'DB_USER', '$db_user'@g" ${website_path}/wordpress/wp-config.php
+	sed -ri "s@'DB_PASSWORD', '(.*)'@'DB_PASSWORD', '$db_passwd'@g" ${website_path}/wordpress/wp-config.php
+	sed -ri "s@'DB_HOST', '(.*)'@'DB_HOST', '$db_host'@g" ${website_path}/wordpress/wp-config.php
+	sed -ri "s@'DB_CHARSET', '(.*)'@'DB_CHARSET', 'utf8'@g" ${website_path}/wordpress/wp-config.php
+	sed -ri "s@'DB_COLLATE', '(.*)'@'DB_COLLATE', 'utf8_bin'@g" ${website_path}/wordpress/wp-config.php
 	echo -e "\033[32m[INFO]\033[0m WordPress Config file Changed."
-	chown -R apache:apache $1/wordpress 
-	mv "${website_path}wordpress" "${website_path}${fqdn}"
+	[[ -d "${website_path}/$fqdn" ]] && rm -rf ${website_path}/$fqdn 
+	mv ${website_path}/wordpress/ ${website_path}/${fqdn} && chown -R apache:apache ${website_path}/${fqdn} 
+	systemctl reload httpd.service
 }
 
 function phpInstall(){
 	yum install -y php72w php72w-cli php72w-common php72w-gd php72w-ldap php72w-mbstring php72w-mysql php72w-pdo php72w-fpm &> /dev/null
-	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m PHP7 install Success!" || echo -e "\033[32m[ERROR]\033[0m PHP7 install Failed!"
+	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m PHP7 install Success!" || echo -e "\033[31m[ERROR]\033[0m PHP7 install Failed!"
 }
 
-function init(){
+function initLamp(){
 	appInstall 'mariadb*' 'mariadb' && initMysql   
 	phpSource 
-	phpInstall && appInstall 'httpd' 'httpd' 
-	[[ $? -eq 0 ]] && wpGet '/data/httpd' && confApache '/etc/httpd/conf/httpd.conf' 'mysite.conf' 
-	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m LAMP environment deploy Success!" && echo -e "\033[32m[INFO]\033[0m Contiune to http://IP"
+	phpInstall && appInstall 'httpd' 'httpd' && confApache '/etc/httpd/conf/httpd.conf' "${fqdn}.conf"
+	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m LAMP deploy Success." || echo -e "\033[31m[ERROR]\033[0m LAMP deploy Failed!"
+}
+ 
+function deployWp(){
+	wpGet && echo -e "\033[32m[INFO]\033[0m WordPress deploy Success." && echo -e "\033[32m[INFO]\033[0m Contiune to http://IP"
 }
 
 function clear(){
@@ -119,22 +127,22 @@ function clear(){
 	rm -rf /var/lib/mysql/*
 	sed -i "/skip-name-resolve/d" /etc/my.cnf
 	sed -i "/innodb-file-per-table/d" /etc/my.cnf
-	rm -rf "/data/httpd/" "/var/log/httpd/${fqdn}" "/etc/httpd/conf.d/mysite.conf"
-	sed -ri "s@^#(Listen 80)@\1@g" /etc/httpd/conf/httpd.conf
-	sed -ri "s@^#(ServerName.*)@\1@g" /etc/httpd/conf/httpd.conf
-	sed -ri "s@^#(DocumentRoot.*)@\1@g" /etc/httpd/conf/httpd.conf
+	rm -rf "${website_path}/${fqdn}" "/var/log/httpd/${fqdn}" "/etc/httpd/conf.d/${fqdn}.conf"
+	sed -ri "s@^#+(Listen 80)@\1@g" /etc/httpd/conf/httpd.conf
+	sed -ri "s@^ServerName.*@#&@g" /etc/httpd/conf/httpd.conf
+	sed -ri "s@^#+(DocumentRoot.*)@\1@g" /etc/httpd/conf/httpd.conf
 	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m clear environment Success!" || echo -e "\033[31m[ERROR]\033[0m something unknow happend!"
 }
 
 function help(){
 	echo "Usage: $0 [ init | clear ]"
-	echo -e "Deploying LAMP Environment on CentOS7 System. \n"
+	echo -e "Building LAMP environment and deploying WordPress in CentOS7. \n"
 }
 
 function main(){
 	case $1 in 
 	init)		
-		init || clear ;;
+		initLamp && deployWp || clear ;;
 	clear)
 		clear ;;	
 	*)

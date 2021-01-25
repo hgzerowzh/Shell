@@ -1,11 +1,11 @@
 #!/bin/bash
-# Description: Deploying Loganalyzer System in stand-alone CentOS7 System
+# Description: Deploying Loganalyzer System in CentOS7 
 # Author: Praywu 
 # Blog: https://cnblogs.com/hgzero
 
-# MySQL Root Password
-user='root'
-password='woshiniba'
+# loganalyzer Version
+la_version='4.1.11'
+#la_version='3.6.6'
 
 # Loganalyzer configure 
 database='Syslog'
@@ -14,9 +14,13 @@ db_passwd='woshiniba'
 db_host='127.0.0.1'
 allow_addr='127.0.0.1'
 
+# MySQL Root Password
+user='root'
+password='woshiniba'
+
 # Apache Config 
 fqdn='loganalyzer'
-website_path='/data/httpd/'
+website_path='/data/apache'
 
 function appInstall(){
 	yum install -y $1 &> /dev/null
@@ -45,16 +49,16 @@ EOF
         mysql -u${user} -p${password} < $(rpm -ql "rsyslog-mysql" | grep "createDB")
         mysql -u${user} -p${password} -e "grant all on ${database}.* to "${db_user}"@"${allow_addr}" identified by '${db_passwd}';"
         mysql -u${user} -p${password} -e "flush privileges;"
-        sed -i "/mysqld/a innodb-file-per-table=ON" /etc/my.cnf
+        sed -i "/mysqld/a innodb-file-per-table=ON\nskip-name-resolve=ON" /etc/my.cnf
     } &> /dev/null
     systemctl restart mariadb.service
     [[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m Mariadb initialize Success!" || echo -e "\033[31m[ERROR]\033[0m Mariadb initialize Failed!"
 }
 
 function confRsyslog(){
-	sed -ri "s@#(.*imudp$)@\1@g" $1
-	sed -ri "s@#(.*imtcp$)@\1@g" $1
-	sed -ri "s@#(.*Run 514$)@\1@g" $1
+	sed -ri "s@#+(.*imudp$)@\1@g" $1
+	sed -ri "s@#+(.*imtcp$)@\1@g" $1
+	sed -ri "s@#+(.*Run 514$)@\1@g" $1
 	sed -i '/MODULES/a $ModLoad ommysql' $1
 	sed -i 's@.*log/messages$@#&@g' $1
 	#sed -i 's@.*log/secure$@#&@g' $1
@@ -66,35 +70,35 @@ function confRsyslog(){
 }
 
 function confApache(){
-    sed -i "s@^#ServerName.*@ServerName $fqdn@g" $1
+    sed -ri "s@(^#[#]*ServerName.*)|(^ServerName.*)@ServerName ${fqdn}@g" $1
     sed -i "s@^Listen.*@#&@g" $1
     sed -i "s@^DocumentRoot.*@#&@g" $1
     mkdir -p /var/log/httpd/$fqdn
     echo "Listen 80
             <VirtualHost *:80>  
-                Servername ${fqdn}.hgzerowzh.com
-                DocumentRoot /data/httpd/$fqdn 
-                <Directory '/data/httpd/$fqdn'>
+                Servername ${fqdn}
+                DocumentRoot ${website_path}/$fqdn 
+                <Directory "${website_path}/$fqdn">
                     Options FollowSymLinks
                     AllowOverRide None
                     Require all granted
                 </Directory>        
                 CustomLog '|/usr/sbin/rotatelogs /var/log/httpd/${fqdn}/access_log 10M' combined
             </VirtualHost>" > /etc/httpd/conf.d/${fqdn}.conf
-	$(httpd -t) && echo -e "\033[32m[INFO]\033[0m Apache config OK!" || echo -e "\033[31m[INFO]\033[0m Apache config Failed!"
-	systemctl restart httpd.service
+	$(httpd -t) && systemctl restart httpd.service
+    [[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m Apache config OK!" || echo -e "\033[31m[INFO]\033[0m Apache config Failed!"
+
 }
 
 function logerGet(){
-	wget -c https://raw.sevencdn.com/hgzerowzh/files/main/loganalyzer-3.4.2.zip -P $1 &> /dev/null
-	yum install unzip -y &> /dev/null
-	unzip $1/loganalyzer-3.4.2.zip -d $1 &> /dev/null  && rm -rf $1/loganalyzer-3.4.2.zip 
+	wget -c https://raw.sevencdn.com/hgzerowzh/Storage/master/loganalyzer/loganalyzer-${la_version}.tar.gz -P ${website_path} &> /dev/null
+	tar xf ${website_path}/loganalyzer-${la_version}.tar.gz -C ${website_path} &> /dev/null  && rm -rf ${website_path}/loganalyzer-${la_version}.tar.gz
 	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m loganalyzer decompression Complete." || echo -e "\033[31m[ERROR]\033[0m loganalyzer decompression Failed!"
-	mkdir -p $1/$fqdn && cp -r $1/loganalyzer-3.4.2/src/* $1/$fqdn 
-	cp -r $1/loganalyzer-3.4.2/contrib/*.sh $1/$fqdn && chmod +x $1/$fqdn/*.sh 
-	touch $1/$fqdn/config.php
+	mkdir -p ${website_path}/$fqdn && cp -r ${website_path}/loganalyzer-${la_version}/src/* ${website_path}/$fqdn 
+	cp -r ${website_path}/loganalyzer-${la_version}/contrib/*.sh ${website_path}/$fqdn && chmod +x ${website_path}/$fqdn/*.sh 
+	touch ${website_path}/$fqdn/config.php
 	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m loganalyzer configure changed." || echo -e "\033[31m[ERROR]\033[0m Something Error!" 
-	chown -R apache:apache $1/$fqdn
+	chown -R apache:apache ${website_path}/$fqdn
 }
 
 function phpInstall(){
@@ -105,7 +109,7 @@ function phpInstall(){
 function init(){
 	appInstall 'mariadb*' 'mariadb' && initMysql && confRsyslog '/etc/rsyslog.conf'
 	phpInstall && appInstall 'httpd' 'httpd' 
-	[[ $? -eq 0 ]] && logerGet '/data/httpd' && confApache '/etc/httpd/conf/httpd.conf' 
+	[[ $? -eq 0 ]] && logerGet && confApache '/etc/httpd/conf/httpd.conf' 
 	[[ $? -eq 0 ]] && echo -e "\033[32m[INFO]\033[0m $fqdn deploy Success!" && echo -e "\033[32m[INFO]\033[0m Contiune to http://IP/"
 }
 
@@ -114,9 +118,10 @@ function clear(){
     systemctl stop httpd.service
     rm -rf /var/lib/mysql/*
     sed -i "/innodb-file-per-table/d" /etc/my.cnf
-    rm -rf /data/httpd/${fqdn}* /var/log/httpd/${fqdn} /etc/httpd/conf.d/${fqdn}.conf
-	sed -ri "s@^#(Listen 80)@\1@g" /etc/httpd/conf/httpd.conf
-	sed -ri "s@^#(DocumentRoot.*)@\1@g" /etc/httpd/conf/httpd.conf
+    sed -i "/skip-name-resolve/d" /etc/my.cnf
+    rm -rf ${website_path}/${fqdn}* /var/log/httpd/${fqdn} /etc/httpd/conf.d/${fqdn}.conf
+	sed -ri "s@^#+(Listen 80)@\1@g" /etc/httpd/conf/httpd.conf
+	sed -ri "s@^#+(DocumentRoot.*)@\1@g" /etc/httpd/conf/httpd.conf
   	sed -ri "s@^ServerName.*@#&@g" /etc/httpd/conf/httpd.conf
 
 	sed -ri "s@(.*imudp$)@#&@g" /etc/rsyslog.conf
@@ -133,7 +138,7 @@ function clear(){
 
 function help(){
 	echo "Usage: $0 [ init | clear ]"
-	echo -e "Deploying Loganalyzer System in stand-alone CentOS7 System. \n"
+	echo -e "Deploying Loganalyzer System in CentOS7. \n"
 }
 
 function main(){
