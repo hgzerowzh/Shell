@@ -1,6 +1,7 @@
 #!/bin/bash
-# description: docker install and accelerate image 
-#
+# description: docker install and accelerate image.
+# Author: Praywu
+# Blog: https://cnblogs.com/hgzero
 
 function docker_source(){
 	mkdir -pv /etc/docker/ && tee /etc/docker/daemon.json <<-'EOF'
