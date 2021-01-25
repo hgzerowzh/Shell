@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Ansible SSH password free login configuration
+# Description: Ansible SSH password free login configuration.
 # Author: Praywu
 # Blog: https://cnblogs.com/hgzero
 
