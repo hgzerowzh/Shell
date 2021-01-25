@@ -11,7 +11,7 @@ wp_version='5.6'
 user='root'
 password='woshiniba'
 
-# WordPress Connect MySQL Config 
+# WordPress connect MySQL Config 
 database='mysite_www'
 db_user='hg_www_wp'
 db_passwd='woshiniba'
