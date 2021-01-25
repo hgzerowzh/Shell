@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Building LAMP environment and deploying WordPress in CentOS7
+# description: Building LAMP environment and deploying WordPress in CentOS7
 # Author: Praywu 
 # Blog: https://cnblogs.com/hgzero
 
