@@ -1,5 +1,5 @@
 #!/bin/bash
-# Description: Deploying Loganalyzer System in CentOS7 
+# description: Deploying Loganalyzer System in CentOS7
 # Author: Praywu 
 # Blog: https://cnblogs.com/hgzero
 
