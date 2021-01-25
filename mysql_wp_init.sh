@@ -1,5 +1,5 @@
 #!/bin/bash
-#
+# description: Initialize MySQL when installing WordPress
 
 # Root password
 user='root'
